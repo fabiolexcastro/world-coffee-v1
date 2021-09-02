@@ -1,0 +1,160 @@
+---
+title: "Datos de café a nivel mundial"
+author: "Fabio Castro-Llanos"
+date: "9/1/2021"
+output: 
+  html_document:
+    theme: flatly
+    highlight: textmate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+---
+
+```{r setup, include = FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 999)
+library(pacman)
+pacman::p_load(raster, rgdal, ggthemes, knitr, gridExtra, ggpubr, leaflet, plotly, rgeos, stringr, ggrepel, hablar, sf, hrbrthemes, scales, readxl, tidyverse, xlsx, RColorBrewer, extrafont, formattable, classInt, kableExtra, shiny, cartography, ghibli, colorspace)
+source('./01-informe-v3-functions.R')
+```
+
+## Introducción
+
+Este breve informe incluirá datos de participación de producción de café a nivel mundial según FAOSTAT lo que nos permitirá dar una mirada generar de los países con mayor y menor importancia de este cultivo tan llamativo. En la siguiente figura se ilustran los datos promedios de área cosechada para el promedio entre los años 2000 y 2018, para el top 10 de países, así como también los primeros 10 países que más producen café a nivel mundial, en ambos casos hay diferencias. 
+
+```{r load, include = TRUE, echo = FALSE, fig.align = 'center', fig.width = 6, fig.height = 5, warning = FALSE, message = FALSE}
+cntr <- sf::st_read('D:/CIAT/DATA/world/all_countries.shp', quiet = TRUE)
+tble <- read_excel('../data/tbl/fao/crop_world_summary.xlsx')[,-1] 
+
+# Production
+prod <- tble %>% 
+  arrange(desc(Production)) %>% 
+  mutate(prod_sum = cumsum(Production), 
+         prod_prc = Production / sum(Production, na.rm = T) * 100, 
+         prod_prc_sum = cumsum(prod_prc))
+prod_top <- prod %>% 
+  top_n(x = ., wt = Production, n = 10) %>% 
+  mutate(country = factor(country, levels = country))
+
+# Area
+area <- tble %>% 
+  arrange(desc(Area_harvested)) %>% 
+  dplyr::select(area_code, country, Area_harvested, area_porc, area_porc_cum)
+area_top <- area %>% 
+  top_n(x = ., wt = area_porc, n = 10) %>% 
+  mutate(country = factor(country, levels = country))
+
+# Graph
+plot_ly(area_top, x = ~country, y = ~Area_harvested, type = 'bar') %>% 
+  layout(yaxis = list(title = 'Área cosechada (ha)'),
+         xaxis = list(title = ''), 
+         title = 'Área cosechada de café (top 10 - mundo)') %>% 
+  div(., align = 'center')
+
+plot_ly(prod_top, x = ~country, y = ~Production, type = 'bar') %>% 
+  layout(yaxis = list(title = 'Producción (Ton)'),
+         xaxis = list(title = ''),
+         title = 'Producción de café (top 10 - mundo)') %>% 
+  div(., align = 'center')
+```
+
+Para ambos casos el país de Brasil se da que es el primer país con mayor área cosechada y producción de café a nivel mundial.
+
+### Brasil
+
+Este es el país con mayor área cultivada y producción de café a nivel mundial, país localizado en Suramérica, siendo el más grande en extensión territorial de esta área del país.  De este país se tiene al momento disponibilidad de datos para los años 2000 al 2018, ahora bien, en el siguiente mapa se ilustra el comportamiento para el promedio del área cosechada en este lapso de tiempo. 
+
+```{r brzl, include = TRUE, echo = FALSE, fig.align = 'center', fig.width = 9, fig.height = 5.5, warning = FALSE, message = FALSE, comment = FALSE, results = FALSE}
+brz <- st_read('../data/shapefile/cff/adm2/hrv_bra_all_v2.shp', quiet = TRUE)
+lbl <- brz %>% as_tibble %>% dplyr::select(-geometry) %>% distinct(class, val_int, clr)
+gbr <- make_map(shp = brz, col = 'class', nme = 'Área cosechada\n(ha)')
+gbl <- make_graph(shp = brz, col = paste0('hrv_', 2000:2010), nme = 'Área cosechada\n(ha) * 1000')
+lyt <- matrix(c(1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 1, 1, 2, 2, 2), nrow = 4, ncol = 5, byrow = T)
+fg1 <- annotate_figure(gbr, top = text_grob('Mapa para Brasil', color = 'black', face = 'bold', size = 13))
+fg2 <- annotate_figure(gbl, top = text_grob('Gráfico año a año', color = 'black', face = 'bold', size = 13))
+all <- grid.arrange(fg1, fg2, layout_matrix = lyt)
+all
+```
+
+### Vietnam 
+
+Vietnam es el segundo país con mayor producción de café a nivel mundial,  con un poco más de 1 millón de toneladas anuales, de este país se disponen actualmente de datos de área cosechada y producción desde el año 2000 hasta el 2018. En la siguiente figura se ilustra el comportamiento del valor para el área cosechada. 
+
+```{r vtnm, include = TRUE, echo = FALSE, fig.align = 'center', fig.width = 10, fig.height = 5, warning = FALSE, message = FALSE, results = FALSE, comment = FALSE}
+vtn <- st_read('../data/shapefile/cff/adm2/hrv_vnm_avg0018_v2.shp', quiet = TRUE)
+lbl <- vtn %>% as_tibble %>% dplyr::select(-geometry) %>% distinct(class, val_int, color)
+vtn <- vtn %>% mutate(clr = color)
+gvt <- make_map(shp = vtn, col = area_avg, nme = 'Área cosechada\ncafé (ha) * 1000')
+gvl <- make_graph(shp = vtn, col = paste0('area_', 2000:2018), nme = 'Área cosechada\n(ha) * 1000')
+fg1 <- annotate_figure(gvt, top = text_grob('Mapa para Vietnam', color = 'black', face = 'bold', size = 13))
+fg2 <- annotate_figure(gvl, top = text_grob('Gráfico año a año', color = 'black', face = 'bold', size = 13))
+lyt <- matrix(c(1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2), nrow = 4, ncol = 4, byrow = T)
+all <- grid.arrange(fg1, fg2, layout_matrix = lyt)
+all
+```
+
+### Colombia
+
+Este país se ubica en la tercera posición con mayor área y producción del cultivo de café a nivel mundial, en ambas ocasiones con más de medio millón de hectáreas y producción en toneladas. En la siguiente figura se ilustra el comportamiento promedio del área cosechada de café desde el año 2007 hasta el 2019, así como también el gráfico de línea.
+
+```{r colm, include = TRUE, echo = FALSE, fig.align = 'center', fig.width = 10, fig.height = 5, warning = FALSE, message = FALSE, results = FALSE, comment = FALSE}
+col <- st_read('../data/shapefile/cff/adm2/hrv_col_all.shp', quiet = TRUE)
+col <- col %>% mutate(class = classHrv)
+lbl <- col %>% as_tibble %>% dplyr::select(-geometry) %>% distinct(class, val_int, color)
+col <- col %>% mutate(clr = color)
+gcl <- make_map(shp = col, col = 'classHrv', nme = 'Área cosechada\ncafé (ha) * 1000')
+gvl <- make_graph(shp = col, col = paste0('hy', 2007:2019), nme = 'Área cosechada\n(ha) * 1000')
+fg1 <- annotate_figure(gvt, top = text_grob('Mapa para Colombia', color = 'black', face = 'bold', size = 13))
+fg2 <- annotate_figure(gvl, top = text_grob('Gráfico año a año', color = 'black', face = 'bold', size = 13))
+lyt <- matrix(c(1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2), nrow = 4, ncol = 4, byrow = T)
+all <- grid.arrange(fg1, fg2, layout_matrix = lyt)
+all
+```
+
+### Mexico
+
+México se ubica en la cuarta posición de países con mayor área cosechada, con más de 700000 hectáreas dedicadas a este cultivo de café. Para este caso se disponen de datos anuales a nivel administrativo número 1, desde el año 
+
+```{r mexm, include = TRUE, echo = FALSE, fig.align = 'center', fig.width = 10, fig.height = 5, warning = FALSE, message = FALSE, results = FALSE, comment = FALSE}
+mex <- st_read('../data/shapefile/cff/adm1/mexico_hrv_all.shp', quiet = TRUE)
+gcl <- ggplot() +
+  geom_sf(data = mex, aes(fill = csh_avg, col = csh_avg)) + 
+  scale_fill_gradientn(colors = brewer.pal(n = 5, name = 'YlOrRd')) +
+  scale_color_gradientn(colors = brewer.pal(n = 5, name = 'YlOrRd')) +
+  # scale_fill_binned_diverging(name = 'YlOrBr') + 
+  # scale_color_binned_diverging(name = 'YlOrBr') +
+  geom_sf(data = cntr, fill = NA) + 
+  coord_sf(xlim = extent(mex)[1:2], ylim = extent(mex)[3:4]) +
+  theme_ipsum_es() + 
+  theme(legend.position = 'bottom', 
+        legend.key.width = unit(1.5, 'line'), 
+        axis.text.x = element_blank(), 
+        axis.text.y = element_blank(), 
+        legend.text = element_text(angle = 45, hjust = 0.5, vjust = 0.5)) +
+   labs(x = '', y = '', fill =  'Área cosechada\n(ha)') +
+  guides(color = 'none')
+tbl <- mex %>% 
+  as_tibble %>% 
+  dplyr::select(NAME_1, starts_with('csc')) %>% 
+  gather(var, value, -NAME_1) %>% 
+  mutate(year = parse_number(var)) %>% 
+  group_by(year) %>% 
+  dplyr::summarise(value = sum(value, na.rm = TRUE)) %>% 
+  ungroup()
+ggc <- ggplot(data = tbl, aes(x = factor(round(year, 0)), y = value/1000)) + 
+    geom_line(aes(group = 1), size = 1.05) + 
+    theme_ipsum_es() + 
+    theme(axis.text.y = element_text(angle = 90, vjust = 0.5, hjust = 0.5), 
+          axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 0.3)) +
+    scale_x_discrete(breaks = seq(1984, 2018, 4)) +
+    labs(x = '', y = 'Área cosechada\n(ha)') 
+fg1 <- annotate_figure(gcl, top = text_grob('Mapa para México', color = 'black', face = 'bold', size = 13))
+fg2 <- annotate_figure(ggc, top = text_grob('Gráfico año a año', color = 'black', face = 'bold', size = 13))
+lyt <- matrix(c(1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2), nrow = 4, ncol = 4, byrow = T)
+all <- grid.arrange(fg1, fg2, layout_matrix = lyt)
+all
+```
+
+
+...
